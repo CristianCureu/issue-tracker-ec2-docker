@@ -8,7 +8,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      PROJECT_DIR: ${{ vars.EC2_PROJECT_DIR }}
+      PROJECT_DIR: ${{ secrets.EC2_PROJECT_DIR }}
       CONTAINER_NAME: issue-tracker
       IMAGE_NAME: issue-tracker
 
