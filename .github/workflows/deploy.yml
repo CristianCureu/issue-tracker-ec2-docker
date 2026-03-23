@@ -1,0 +1,34 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_DIR: ${{ vars.EC2_PROJECT_DIR }}
+      CONTAINER_NAME: issue-tracker
+      IMAGE_NAME: issue-tracker
+
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy on EC2
+        run: |
+          test -n "$PROJECT_DIR"
+          ssh -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
+            set -e
+            cd "'"$PROJECT_DIR"'"
+            git pull origin main
+            docker build -t "'"$IMAGE_NAME"'" .
+            docker stop "'"$CONTAINER_NAME"'" || true
+            docker rm "'"$CONTAINER_NAME"'" || true
+            docker run -d --name "'"$CONTAINER_NAME"'" --restart unless-stopped -p 80:8000 "'"$IMAGE_NAME"'"
+          '
