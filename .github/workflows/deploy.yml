@@ -4,31 +4,64 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      PROJECT_DIR: ${{ secrets.EC2_PROJECT_DIR }}
       CONTAINER_NAME: issue-tracker
-      IMAGE_NAME: issue-tracker
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compute image name
+        id: image
+        run: |
+          echo "base=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "latest=ghcr.io/${GITHUB_REPOSITORY,,}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.latest }}
+            ${{ steps.image.outputs.base }}:${{ github.sha }}
+
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
           chmod 600 ~/.ssh/ec2_key
           ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy on EC2
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: |
-          test -n "$PROJECT_DIR"
+          test -n "$GHCR_USERNAME"
+          test -n "$GHCR_TOKEN"
           ssh -i ~/.ssh/ec2_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} '
             set -e
-            cd "'"$PROJECT_DIR"'"
-            git pull origin main
-            docker build -t "'"$IMAGE_NAME"'" .
+            echo "'"$GHCR_TOKEN"'" | docker login ghcr.io -u "'"$GHCR_USERNAME"'" --password-stdin
+            docker pull "'"${{ steps.image.outputs.latest }}"'"
             docker stop "'"$CONTAINER_NAME"'" || true
             docker rm "'"$CONTAINER_NAME"'" || true
-            docker run -d --name "'"$CONTAINER_NAME"'" --restart unless-stopped -p 80:8000 "'"$IMAGE_NAME"'"
+            docker run -d --name "'"$CONTAINER_NAME"'" --restart unless-stopped -p 80:8000 "'"${{ steps.image.outputs.latest }}"'"
           '
