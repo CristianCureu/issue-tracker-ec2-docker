@@ -8,6 +8,11 @@ from app.errors import IssueNotFoundError
 app = FastAPI()
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(_request: Request, _exc: RequestValidationError):
     return JSONResponse(
