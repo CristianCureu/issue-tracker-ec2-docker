@@ -17,7 +17,7 @@ def health():
 async def validation_exception_handler(_request: Request, _exc: RequestValidationError):
     return JSONResponse(
         status_code=422,
-        content={"detail": "Invalid request bodya"}
+        content={"detail": "Invalid request body"}
     )
 
 
